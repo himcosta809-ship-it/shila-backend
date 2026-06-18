@@ -25,6 +25,26 @@ mongoose.connect(process.env.MONGODB_URI)
 
 // ── Health check ─────────────────────────────────────────────────────────────
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
+// ── Image upload proxy (forwards to imgbb) ──────────────────
+const https = require('https');
+app.post('/api/upload', auth, async (req, res) => {
+  try {
+    const chunks = [];
+    req.on('data', chunk => chunks.push(chunk));
+    req.on('end', async () => {
+      const boundary = req.headers['content-type'].split('boundary=')[1];
+      const response = await fetch(`https://api.imgbb.com/1/upload?key=fb46f1930c5de23cfa83e7a6fa4f8a0b`, {
+        method: 'POST',
+        headers: req.headers,
+        body: Buffer.concat(chunks)
+      });
+      const data = await response.json();
+      res.json(data);
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
 
 // ── Admin login ──────────────────────────────────────────────────────────────
 // Single hardcoded admin account stored in env vars (no user table needed).
