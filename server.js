@@ -9,6 +9,7 @@ const Product = require('./models/Product');
 const Order   = require('./models/Order');
 const Message = require('./models/Message');
 const auth    = require('./auth');
+const Settings = require('./models/Settings');
 
 const app = express();
 
@@ -25,6 +26,14 @@ mongoose.connect(process.env.MONGODB_URI)
 
 // ── Health check ─────────────────────────────────────────────────────────────
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
+app.get('/api/settings', async (req, res) => {
+  try {
+    const settings = await Settings.getSingleton();
+    res.json(settings);
+  } catch (err) {
+    res.status(500).json({ error: 'Could not load settings' });
+  }
+});
 // ── Image upload proxy (forwards to imgbb) ──────────────────
 const https = require('https');
 app.post('/api/upload', auth, async (req, res) => {
@@ -255,6 +264,35 @@ app.post('/api/admin/seed', auth, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// — ADMIN: Settings
+app.put('/api/admin/settings', auth, async (req, res) => {
+  try {
+    const settings = await Settings.getSingleton();
+    const allowedFields = [
+      'headingFontSize', 'bodyFontSize', 'productImageHeight',
+      'instagramUrl', 'facebookUrl', 'whatsappNumber',
+      'phoneNumber', 'email', 'address'
+    ];
+    allowedFields.forEach(field => {
+      if (req.body[field] !== undefined) settings[field] = req.body[field];
+    });
+    await settings.save();
+    res.json(settings);
+  } catch (err) {
+    res.status(500).json({ error: 'Could not save settings' });
+  }
+});
+
+app.get('/api/admin/settings', auth, async (req, res) => {
+  try {
+    const settings = await Settings.getSingleton();
+    res.json(settings);
+  } catch (err) {
+    res.status(500).json({ error: 'Could not load settings' });
+  }
+});
+
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
