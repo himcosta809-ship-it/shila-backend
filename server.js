@@ -13,7 +13,9 @@ const auth    = require('./auth');
 const app = express();
 
 // ── Middleware ──────────────────────────────────────────────────────────────
-app.use(cors());                        // allow the front-end on any domain
+app.use(cors({
+  origin: '*'
+}));                       // allow the front-end on any domain
 app.use(express.json());
 
 // ── MongoDB ─────────────────────────────────────────────────────────────────
