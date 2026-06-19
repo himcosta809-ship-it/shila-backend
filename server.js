@@ -10,6 +10,9 @@ const Order   = require('./models/Order');
 const Message = require('./models/Message');
 const auth    = require('./auth');
 const Settings = require('./models/Settings');
+const crypto = require('crypto');
+const axios = require('axios');
+const Payment = require('./models/Payment');
 
 const app = express();
 
