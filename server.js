@@ -281,6 +281,134 @@ app.post('/api/admin/seed', auth, async (req, res) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════
+//  PAYMENTS — eSewa + Khalti
+// ═══════════════════════════════════════════════════════════════════════
+
+app.post('/api/payments/esewa/initiate', async (req, res) => {
+  try {
+    const { orderId, amount } = req.body;
+    if (!orderId || !amount) return res.status(400).json({ error: 'orderId and amount are required' });
+
+    const order = await Order.findById(orderId);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+
+    const transactionUuid = `${Date.now()}-${orderId}`;
+
+    await Payment.create({
+      orderId, provider: 'esewa', amount, transactionUuid, status: 'pending'
+    });
+
+    const signedFieldNames = 'total_amount,transaction_uuid,product_code';
+    const message = `total_amount=${amount},transaction_uuid=${transactionUuid},product_code=${ESEWA_MERCHANT_CODE}`;
+    const signature = crypto.createHmac('sha256', ESEWA_SECRET_KEY).update(message).digest('base64');
+
+    res.json({
+      paymentUrl: ESEWA_PAYMENT_URL,
+      fields: {
+        amount: String(amount),
+        tax_amount: '0',
+        total_amount: String(amount),
+        transaction_uuid: transactionUuid,
+        product_code: ESEWA_MERCHANT_CODE,
+        product_service_charge: '0',
+        product_delivery_charge: '0',
+        success_url: `${FRONTEND_URL}/payment-success.html?provider=esewa&orderId=${orderId}`,
+        failure_url: `${FRONTEND_URL}/payment-failed.html?provider=esewa&orderId=${orderId}`,
+        signed_field_names: signedFieldNames,
+        signature
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Could not initiate eSewa payment' });
+  }
+});
+
+app.post('/api/payments/esewa/verify', async (req, res) => {
+  try {
+    const { transactionUuid } = req.body;
+    const payment = await Payment.findOne({ transactionUuid, provider: 'esewa' });
+    if (!payment) return res.status(404).json({ error: 'Payment record not found' });
+
+    const statusRes = await axios.get(ESEWA_STATUS_URL, {
+      params: {
+        product_code: ESEWA_MERCHANT_CODE,
+        total_amount: payment.amount,
+        transaction_uuid: transactionUuid
+      }
+    });
+
+    if (statusRes.data.status === 'COMPLETE') {
+      payment.status = 'completed';
+      payment.providerRefId = statusRes.data.ref_id || '';
+      await payment.save();
+      await Order.findByIdAndUpdate(payment.orderId, { status: 'confirmed', paid: true });
+      return res.json({ success: true, status: 'completed' });
+    }
+
+    payment.status = 'failed';
+    await payment.save();
+    res.json({ success: false, status: statusRes.data.status });
+  } catch (err) {
+    res.status(500).json({ error: 'Could not verify eSewa payment' });
+  }
+});
+
+app.post('/api/payments/khalti/initiate', async (req, res) => {
+  try {
+    const { orderId, amount, customerName, email, phone } = req.body;
+    if (!orderId || !amount) return res.status(400).json({ error: 'orderId and amount are required' });
+
+    const order = await Order.findById(orderId);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+
+    const response = await axios.post(`${KHALTI_API_BASE}/initiate/`, {
+      return_url: `${FRONTEND_URL}/payment-success.html?provider=khalti&orderId=${orderId}`,
+      website_url: FRONTEND_URL,
+      amount: Math.round(amount * 100),
+      purchase_order_id: orderId,
+      purchase_order_name: `Order ${orderId}`,
+      customer_info: { name: customerName || 'Customer', email: email || '', phone: phone || '' }
+    }, {
+      headers: { Authorization: `key ${KHALTI_SECRET_KEY}`, 'Content-Type': 'application/json' }
+    });
+
+    await Payment.create({
+      orderId, provider: 'khalti', amount, pidx: response.data.pidx, status: 'pending'
+    });
+
+    res.json({ paymentUrl: response.data.payment_url, pidx: response.data.pidx });
+  } catch (err) {
+    res.status(500).json({ error: 'Could not initiate Khalti payment' });
+  }
+});
+
+app.post('/api/payments/khalti/verify', async (req, res) => {
+  try {
+    const { pidx } = req.body;
+    const payment = await Payment.findOne({ pidx, provider: 'khalti' });
+    if (!payment) return res.status(404).json({ error: 'Payment record not found' });
+
+    const lookupRes = await axios.post(`${KHALTI_API_BASE}/lookup/`, { pidx }, {
+      headers: { Authorization: `key ${KHALTI_SECRET_KEY}`, 'Content-Type': 'application/json' }
+    });
+
+    if (lookupRes.data.status === 'Completed') {
+      payment.status = 'completed';
+      payment.providerRefId = lookupRes.data.transaction_id || '';
+      await payment.save();
+      await Order.findByIdAndUpdate(payment.orderId, { status: 'confirmed', paid: true });
+      return res.json({ success: true, status: 'completed' });
+    }
+
+    payment.status = 'failed';
+    await payment.save();
+    res.json({ success: false, status: lookupRes.data.status });
+  } catch (err) {
+    res.status(500).json({ error: 'Could not verify Khalti payment' });
+  }
+});
+
 // — ADMIN: Settings
 app.put('/api/admin/settings', auth, async (req, res) => {
   try {
