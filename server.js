@@ -16,6 +16,19 @@ const Payment = require('./models/Payment');
 
 const app = express();
 
+
+// ── Payment gateway config ──────────────────────────────────────────────
+// SANDBOX values below. When you get real merchant credentials, just set
+// these as environment variables on Render — code stays the same.
+const ESEWA_MERCHANT_CODE = process.env.ESEWA_MERCHANT_CODE || 'EPAYTEST';
+const ESEWA_SECRET_KEY    = process.env.ESEWA_SECRET_KEY    || '8gBm/:&EnhH.1/q';
+const ESEWA_PAYMENT_URL   = process.env.ESEWA_PAYMENT_URL   || 'https://rc-epay.esewa.com.np/api/epay/main/v2/form';
+const ESEWA_STATUS_URL    = process.env.ESEWA_STATUS_URL    || 'https://rc.esewa.com.np/api/epay/transaction/status/';
+
+const KHALTI_SECRET_KEY = process.env.KHALTI_SECRET_KEY || 'live_secret_key_68791341fdd94846a146f0457ff7b455';
+const KHALTI_API_BASE   = process.env.KHALTI_API_BASE   || 'https://dev.khalti.com/api/v2/epayment';
+
+const FRONTEND_URL = process.env.FRONTEND_URL || 'https://shilahandicraft.com.np';
 // ── Middleware ──────────────────────────────────────────────────────────────
 app.use(cors({
   origin: '*'
